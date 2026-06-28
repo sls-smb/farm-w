@@ -63,7 +63,7 @@ DEFAULT_CONFIG = {
     "stop_key": "end",
     "pickup_duration": 5.5,
     "between_delay": 0.3,
-    "search_enabled": True,
+    "search_enabled": False,
     "search_min": 0.2,
     "search_max": 0.6,
     "region_top": 1065,
@@ -241,15 +241,6 @@ class FarmBot:
                 return
             time.sleep(0.05)
 
-    def _micro_search(self):
-        if not self.cfg["search_enabled"]:
-            return
-        key = random.choice(["q", "d"])
-        duration = random.uniform(self.cfg["search_min"], self.cfg["search_max"])
-        press_scan(key)
-        self._safe_sleep(duration)
-        release_scan(key)
-
     def _loop(self):
         delay = self.cfg["start_delay"]
         self.log(f"[BOT] Démarrage dans {delay}s — clique sur GTA !")
@@ -284,7 +275,6 @@ class FarmBot:
                 continue
 
             if not self.paused and self.running:
-                self._micro_search()
                 self._safe_sleep(self.cfg["between_delay"])
 
         self.set_status("ARRÊTÉ")
