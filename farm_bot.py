@@ -31,7 +31,7 @@ import pytesseract
 # ─────────────────────────────────────────────
 
 # Chemin vers Tesseract
-pytesseract.pytesseract.tesseract_cmd = r"C:\Programmes\Tesseract-OCR\tesseract.exe"
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # Touche de ramassage
 PICKUP_KEY = "e"
