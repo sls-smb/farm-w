@@ -70,12 +70,21 @@ def app_dir():
 def resolve_tesseract():
     """
     Cherche Tesseract dans cet ordre :
-    1. Dossier 'Tesseract-OCR' embarqué à côté de l'exe (build autonome)
-    2. Installation standard Windows
+    1. Embarqué dans l'exe --onefile (décompressé dans sys._MEIPASS)
+    2. Dossier 'Tesseract-OCR' à côté de l'exe (build --onedir)
+    3. Installation standard Windows
     """
+    # 1. Mode --onefile : PyInstaller extrait les données dans _MEIPASS
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        onefile = os.path.join(meipass, "Tesseract-OCR", "tesseract.exe")
+        if os.path.exists(onefile):
+            return onefile
+    # 2. Mode --onedir : dossier à côté de l'exe
     bundled = os.path.join(app_dir(), "Tesseract-OCR", "tesseract.exe")
     if os.path.exists(bundled):
         return bundled
+    # 3. Installation système
     return r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 

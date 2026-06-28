@@ -25,24 +25,34 @@ Les réglages sont sauvegardés dans `config.json`.
 
 ## Compiler en .exe autonome
 
-Dans PowerShell, depuis le dossier du projet :
-
 ```powershell
 pip install -r requirements.txt
 pip install pyinstaller
-
-pyinstaller --noconfirm --onedir --windowed --name "GTA_Farm_Bot" --collect-all cv2 --collect-all mss --collect-all pytesseract --collect-all keyboard farm_gui.py
 ```
 
-Puis copie Tesseract à côté de l'exe pour le rendre autonome :
+### Option A — Un seul fichier .exe (tout-en-un, Tesseract inclus)
 
 ```powershell
+pyinstaller --noconfirm --onefile --windowed --name "GTA_Farm_Bot" --collect-all cv2 --collect-all mss --collect-all pytesseract --collect-all keyboard --add-data "C:\Program Files\Tesseract-OCR;Tesseract-OCR" farm_gui.py
+```
+
+Résultat : **un unique `dist\GTA_Farm_Bot.exe`** contenant Python, toutes
+les bibliothèques ET Tesseract. Rien à installer, rien à copier.
+L'utilisateur double-clique sur l'exe, point.
+
+> Note : au lancement, l'exe décompresse son contenu dans un dossier
+> temporaire (quelques secondes au premier démarrage). C'est normal
+> pour le mode tout-en-un.
+
+### Option B — Dossier (démarrage plus rapide)
+
+```powershell
+pyinstaller --noconfirm --onedir --windowed --name "GTA_Farm_Bot" --collect-all cv2 --collect-all mss --collect-all pytesseract --collect-all keyboard farm_gui.py
 xcopy /E /I /Y "C:\Program Files\Tesseract-OCR" "dist\GTA_Farm_Bot\Tesseract-OCR"
 ```
 
-Résultat dans `dist\GTA_Farm_Bot\`. Tu peux zipper et distribuer tout
-le dossier — l'utilisateur final n'a **rien à installer**, il lance
-juste `GTA_Farm_Bot.exe`.
+Résultat dans `dist\GTA_Farm_Bot\` (dossier à zipper). Démarre plus vite
+mais c'est un dossier complet au lieu d'un seul fichier.
 
 ### À propos de Tesseract et du .exe
 
