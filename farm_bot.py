@@ -76,7 +76,7 @@ TEXT_REGION = {
 }
 
 # Mot-clé à détecter (distinctif à ce message)
-INVENTORY_KEYWORD = "n'avez"
+INVENTORY_KEYWORD = "avez pas"
 
 SEARCH_MIN_DURATION = 0.2
 SEARCH_MAX_DURATION = 0.6

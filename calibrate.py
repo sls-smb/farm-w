@@ -23,7 +23,7 @@ TEXT_REGION = {
     "height": 40,
 }
 
-INVENTORY_KEYWORD = "n'avez"
+INVENTORY_KEYWORD = "avez pas"
 
 
 def capture():
