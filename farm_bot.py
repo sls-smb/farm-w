@@ -103,15 +103,11 @@ def capture_region(region: dict) -> Image.Image:
 
 
 def preprocess_for_ocr(img: Image.Image) -> Image.Image:
-    """
-    Les messages GTA sont du texte blanc/jaune sur fond semi-transparent.
-    On augmente le contraste pour améliorer la détection OCR.
-    """
+    """Texte blanc sur fond sombre : on inverse puis on seuille."""
     arr = np.array(img)
     gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-    # Seuillage Otsu — s'adapte automatiquement à la luminosité
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    # Agrandissement x2 pour améliorer la précision OCR sur petit texte
+    inverted = cv2.bitwise_not(gray)
+    _, thresh = cv2.threshold(inverted, 180, 255, cv2.THRESH_BINARY)
     h, w = thresh.shape
     resized = cv2.resize(thresh, (w * 2, h * 2), interpolation=cv2.INTER_LINEAR)
     return Image.fromarray(resized)
@@ -122,8 +118,11 @@ def is_inventory_full() -> bool:
     try:
         img = capture_region(INVENTORY_REGION)
         img = preprocess_for_ocr(img)
-        text = pytesseract.image_to_string(img, lang="fra").lower()
-        return INVENTORY_FULL_TEXT.lower() in text
+        for config in ["--psm 6", "--psm 3", "--psm 11"]:
+            text = pytesseract.image_to_string(img, lang="fra", config=config).lower()
+            if INVENTORY_FULL_TEXT.lower() in text:
+                return True
+        return False
     except Exception as e:
         print(f"[WARN] Erreur OCR : {e}")
         return False

@@ -54,17 +54,28 @@ def capture_and_ocr():
     img.save("calibration_capture.png")
     print("→ Image brute sauvegardée : calibration_capture.png")
 
-    # Prétraitement identique à farm_bot.py
+    # Prétraitement : texte blanc sur fond sombre → on inverse pour obtenir noir sur blanc
     arr = np.array(img)
     gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Inversion : texte blanc devient noir, fond sombre devient blanc
+    inverted = cv2.bitwise_not(gray)
+    # Seuillage pour nettoyer le bruit
+    _, thresh = cv2.threshold(inverted, 180, 255, cv2.THRESH_BINARY)
     h, w = thresh.shape
     resized = cv2.resize(thresh, (w * 2, h * 2), interpolation=cv2.INTER_LINEAR)
     thresh_img = Image.fromarray(resized)
     thresh_img.save("calibration_thresh.png")
     print("→ Image seuillée sauvegardée : calibration_thresh.png")
 
-    text = pytesseract.image_to_string(thresh_img, lang="fra")
+    # Tente l'OCR avec plusieurs configs
+    text = ""
+    for config in ["--psm 6", "--psm 3", "--psm 11"]:
+        t = pytesseract.image_to_string(thresh_img, lang="fra", config=config)
+        if t.strip():
+            text = t
+            break
+    if not text.strip():
+        text = pytesseract.image_to_string(thresh_img, lang="fra")
     print(f"\nTexte OCR détecté :\n---\n{text.strip()}\n---")
 
     keyword = "assez de place"
