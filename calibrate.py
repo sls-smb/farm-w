@@ -20,10 +20,10 @@ from PIL import Image
 
 # Doit correspondre à farm_bot.py
 INVENTORY_REGION = {
-    "top": 1300,
-    "left": 0,
-    "width": 750,
-    "height": 100,
+    "top": 580,
+    "left": 60,
+    "width": 380,
+    "height": 75,
 }
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"

@@ -45,10 +45,10 @@ BETWEEN_PICKUP_DELAY = 0.3
 # Zone de détection du message inventaire — bas-gauche en 2560x1440
 # "Vous n'avez pas assez de place" apparaît dans cette zone
 INVENTORY_REGION = {
-    "top": 1300,
-    "left": 0,
-    "width": 750,
-    "height": 100,
+    "top": 580,
+    "left": 60,
+    "width": 380,
+    "height": 75,
 }
 
 # Texte à détecter (insensible à la casse, correspondance partielle)
