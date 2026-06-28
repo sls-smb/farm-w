@@ -387,23 +387,46 @@ class KeyCaptureButton(ttk.Button):
         self.on_change(key)
 
 
-class FarmGUI:
-    def __init__(self, root):
-        self.root = root
+class FarmBotFrame(ttk.Frame):
+    """
+    Feature 'Bot de farming' embarquable dans une app tkinter existante.
+
+    Utilisation dans l'app hôte :
+        from farm_gui import FarmBotFrame
+        frame = FarmBotFrame(notebook)
+        notebook.add(frame, text="Farm Bot")
+
+    Appeler frame.shutdown() à la fermeture pour libérer les hotkeys globaux.
+    """
+
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, **kwargs)
         self.cfg = load_config()
         self.bot = None
-
-        root.title("GTA Seed Farming Bot")
-        root.geometry("560x640")
-        root.resizable(False, False)
 
         self._build_ui()
         # Écoute globale des touches pause/stop même hors focus
         self._setup_global_hotkeys()
+        # Libère les hotkeys quand le frame est détruit
+        self.bind("<Destroy>", self._on_destroy)
+
+    def shutdown(self):
+        """Arrête le bot et libère les hotkeys globaux."""
+        if self.bot:
+            self.bot.stop()
+        try:
+            import keyboard as kb
+            kb.unhook_all_hotkeys()
+        except Exception:
+            pass
+
+    def _on_destroy(self, event):
+        if event.widget is self:
+            self.shutdown()
 
     # ---------- UI ----------
     def _build_ui(self):
-        nb = ttk.Notebook(self.root)
+        nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=8, pady=8)
 
         self.tab_main = ttk.Frame(nb)
@@ -497,10 +520,10 @@ class FarmGUI:
             self.log_text.insert("end", msg + "\n")
             self.log_text.see("end")
             self.log_text.config(state="disabled")
-        self.root.after(0, _append)
+        self.after(0, _append)
 
     def set_status(self, txt):
-        self.root.after(0, lambda: self.status_var.set(txt))
+        self.after(0, lambda: self.status_var.set(txt))
 
     def alert(self):
         def _beep():
@@ -508,14 +531,14 @@ class FarmGUI:
                 winsound.Beep(freq, dur)
                 time.sleep(0.05)
         threading.Thread(target=_beep, daemon=True).start()
-        self.root.after(0, self._refresh_buttons)
+        self.after(0, self._refresh_buttons)
 
     # ---------- boutons ----------
     def on_start(self):
         if not os.path.exists(self.cfg["tesseract_path"]):
             messagebox.showerror("Tesseract introuvable",
                                  f"Chemin invalide :\n{self.cfg['tesseract_path']}\n\n"
-                                 "Corrige-le dans l'onglet Avancé.")
+                                 "Vérifie que Tesseract est installé ou embarqué.")
             return
         self.bot = FarmBot(self.cfg, self.log, self.set_status, self.alert)
         self.bot.start()
@@ -529,7 +552,7 @@ class FarmGUI:
     def on_stop(self):
         if self.bot:
             self.bot.stop()
-        self.root.after(300, self._refresh_buttons)
+        self.after(300, self._refresh_buttons)
 
     def _refresh_buttons(self):
         running = self.bot and self.bot.running
@@ -541,12 +564,17 @@ class FarmGUI:
 
 
 def main():
+    """Lanceur standalone (test du bot seul)."""
     root = tk.Tk()
+    root.title("GTA Seed Farming Bot")
+    root.geometry("560x640")
+    root.resizable(False, False)
     try:
         ttk.Style().theme_use("clam")
     except Exception:
         pass
-    app = FarmGUI(root)
+    frame = FarmBotFrame(root)
+    frame.pack(fill="both", expand=True)
     root.mainloop()
 
 
