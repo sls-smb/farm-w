@@ -30,8 +30,8 @@ import pytesseract
 # CONFIGURATION
 # ─────────────────────────────────────────────
 
-# Décommente et adapte si Tesseract n'est pas dans le PATH Windows
-# pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Chemin vers Tesseract
+pytesseract.pytesseract.tesseract_cmd = r"C:\Programmes\Tesseract-OCR\tesseract.exe"
 
 # Touche de ramassage
 PICKUP_KEY = "e"
