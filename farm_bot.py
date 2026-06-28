@@ -16,12 +16,41 @@ import time
 import threading
 import winsound
 import random
+import ctypes
 
 import keyboard
 import mss
 import numpy as np
 import cv2
 from PIL import Image
+
+# Envoi de touches par scan code (indépendant du layout AZERTY/QWERTY)
+KEYEVENTF_SCANCODE = 0x0008
+KEYEVENTF_KEYUP    = 0x0002
+
+# Scan codes des touches physiques (identiques sur tous les claviers)
+SCAN_CODES = {
+    "e": 0x12,
+    "z": 0x11,
+    "q": 0x10,
+    "s": 0x1F,
+    "d": 0x20,
+}
+
+def _send_scan(scan_code: int, up: bool = False):
+    flags = KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if up else 0)
+    ctypes.windll.user32.keybd_event(0, scan_code, flags, 0)
+
+def press_scan(key: str):
+    _send_scan(SCAN_CODES[key])
+
+def release_scan(key: str):
+    _send_scan(SCAN_CODES[key], up=True)
+
+def tap_scan(key: str):
+    press_scan(key)
+    time.sleep(0.05)
+    release_scan(key)
 
 # ─────────────────────────────────────────────
 # CONFIGURATION
@@ -120,9 +149,9 @@ def safe_sleep(duration: float):
 def micro_search():
     key = random.choice(["q", "d"])
     duration = random.uniform(SEARCH_MIN_DURATION, SEARCH_MAX_DURATION)
-    keyboard.press(key)
+    press_scan(key)
     safe_sleep(duration)
-    keyboard.release(key)
+    release_scan(key)
 
 # ─────────────────────────────────────────────
 # GESTION DES TOUCHES
@@ -186,7 +215,7 @@ def main():
             alert_and_pause()
             continue
 
-        keyboard.send(PICKUP_KEY)
+        tap_scan(PICKUP_KEY)
         safe_sleep(PICKUP_DURATION)
 
         if not running:
