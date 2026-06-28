@@ -17,7 +17,6 @@ import threading
 import winsound
 import random
 
-import pyautogui
 import keyboard
 import mss
 import numpy as np
