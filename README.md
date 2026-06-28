@@ -25,12 +25,20 @@ Les réglages sont sauvegardés dans `config.json`.
 
 ## Compiler en .exe autonome
 
-Double-clique sur **`build_exe.bat`** (ou lance-le depuis PowerShell).
+Dans PowerShell, depuis le dossier du projet :
 
-Le script :
-1. installe PyInstaller et les dépendances
-2. compile `farm_gui.py` en exécutable
-3. **embarque Tesseract** dans le dossier de l'app
+```powershell
+pip install -r requirements.txt
+pip install pyinstaller
+
+pyinstaller --noconfirm --onedir --windowed --name "GTA_Farm_Bot" --collect-all cv2 --collect-all mss --collect-all pytesseract --collect-all keyboard farm_gui.py
+```
+
+Puis copie Tesseract à côté de l'exe pour le rendre autonome :
+
+```powershell
+xcopy /E /I /Y "C:\Program Files\Tesseract-OCR" "dist\GTA_Farm_Bot\Tesseract-OCR"
+```
 
 Résultat dans `dist\GTA_Farm_Bot\`. Tu peux zipper et distribuer tout
 le dossier — l'utilisateur final n'a **rien à installer**, il lance
