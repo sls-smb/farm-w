@@ -3,13 +3,12 @@ GTA Seed Farming Bot
 ====================
 Résolution cible : 2560x1440
 Touche ramassage : E
-Message inventaire plein : "Vous n'avez pas assez de place"
 Clavier : AZERTY (ZQSD)
 OS : Windows
 
+Détecte la notification Unity RP par couleur (rapide, sans OCR).
+
 Dépendances : pip install -r requirements.txt
-Tesseract OCR requis : https://github.com/UB-Mannheim/tesseract/wiki
-  → Installe le pack de langue française lors de l'installation Tesseract
 """
 
 import sys
@@ -24,56 +23,50 @@ import mss
 import numpy as np
 import cv2
 from PIL import Image
-import pytesseract
 
 # ─────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────
 
-# Chemin vers Tesseract
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
 # Touche de ramassage
 PICKUP_KEY = "e"
 
-# Durée de l'animation de ramassage (secondes) — ajuste si besoin
+# Durée de l'animation de ramassage (secondes)
 PICKUP_DURATION = 5.5
 
 # Délai entre la fin de l'animation et le prochain ramassage
 BETWEEN_PICKUP_DELAY = 0.3
 
-# Zone de détection du message inventaire — bas-gauche en 2560x1440
-# "Vous n'avez pas assez de place" apparaît dans cette zone
-INVENTORY_REGION = {
+# Zone contenant la notification Unity RP (bas-gauche, 2560x1440)
+NOTIF_REGION = {
     "top": 990,
     "left": 60,
     "width": 380,
     "height": 110,
 }
 
-# Texte à détecter (insensible à la casse, correspondance partielle)
-INVENTORY_FULL_TEXT = "n'avez"
+# Couleur rouge du logo Unity RP (BGR) — plage de détection
+# Rouge vif : R>150, G<80, B<80
+RED_MIN = np.array([0,   0,   150], dtype=np.uint8)   # BGR min
+RED_MAX = np.array([80,  80,  255], dtype=np.uint8)   # BGR max
 
-# Micro-mouvement aléatoire entre chaque graine (zone petite)
-# Le personnage pivote légèrement sur lui-même pour couvrir la zone
-SEARCH_MIN_DURATION = 0.2  # secondes de touche maintenue
+# Nombre minimum de pixels rouges pour valider la détection
+RED_PIXEL_THRESHOLD = 30
+
+# Micro-mouvement entre graines
+SEARCH_MIN_DURATION = 0.2
 SEARCH_MAX_DURATION = 0.6
 
-# Touches de déplacement AZERTY
-MOVE_KEYS = ["z", "q", "s", "d"]
-
-# Touche pause manuelle / reprise
+# Touches
 PAUSE_KEY = "p"
+STOP_KEY  = "end"
 
-# Touche arrêt complet
-STOP_KEY = "end"
-
-# Alerte sonore Windows (fréquence Hz, durée ms, répétitions)
+# Alerte sonore
 ALERT_BEEPS = [
     (1200, 300),
-    (900, 300),
+    (900,  300),
     (1200, 300),
-    (900, 500),
+    (900,  500),
 ]
 
 # ─────────────────────────────────────────────
@@ -84,52 +77,40 @@ paused = False
 running = True
 _pause_lock = threading.Lock()
 
-
 # ─────────────────────────────────────────────
 # UTILITAIRES
 # ─────────────────────────────────────────────
 
 def play_alert():
-    """Joue une séquence de bips pour alerter l'utilisateur."""
     for freq, duration in ALERT_BEEPS:
         winsound.Beep(freq, duration)
         time.sleep(0.05)
 
 
-def capture_region(region: dict) -> Image.Image:
+def capture_region(region: dict) -> np.ndarray:
+    """Capture une région et retourne un tableau BGR (format OpenCV)."""
     with mss.mss() as sct:
         shot = sct.grab(region)
-        return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
-
-
-def preprocess_for_ocr(img: Image.Image) -> Image.Image:
-    """Texte blanc sur fond sombre : on inverse puis on seuille."""
-    arr = np.array(img)
-    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-    inverted = cv2.bitwise_not(gray)
-    _, thresh = cv2.threshold(inverted, 180, 255, cv2.THRESH_BINARY)
-    h, w = thresh.shape
-    resized = cv2.resize(thresh, (w * 2, h * 2), interpolation=cv2.INTER_LINEAR)
-    return Image.fromarray(resized)
+        arr = np.frombuffer(shot.bgra, dtype=np.uint8).reshape(shot.height, shot.width, 4)
+        return arr[:, :, :3]  # drop alpha → BGR
 
 
 def is_inventory_full() -> bool:
-    """Retourne True si le message d'inventaire plein est visible."""
+    """
+    Détecte la notification Unity RP en cherchant les pixels rouges du logo.
+    Rapide (~5ms), sans OCR.
+    """
     try:
-        img = capture_region(INVENTORY_REGION)
-        img = preprocess_for_ocr(img)
-        for config in ["--psm 6", "--psm 3", "--psm 11"]:
-            text = pytesseract.image_to_string(img, lang="fra", config=config).lower()
-            if INVENTORY_FULL_TEXT.lower() in text:
-                return True
-        return False
+        bgr = capture_region(NOTIF_REGION)
+        mask = cv2.inRange(bgr, RED_MIN, RED_MAX)
+        red_pixels = cv2.countNonZero(mask)
+        return red_pixels >= RED_PIXEL_THRESHOLD
     except Exception as e:
-        print(f"[WARN] Erreur OCR : {e}")
+        print(f"[WARN] Erreur détection : {e}")
         return False
 
 
 def safe_sleep(duration: float):
-    """Sleep interruptible : s'arrête si paused ou running change."""
     end = time.time() + duration
     while time.time() < end:
         if not running:
@@ -138,28 +119,24 @@ def safe_sleep(duration: float):
 
 
 def micro_search():
-    """Pivote légèrement le personnage pour trouver la graine suivante."""
-    key = random.choice(["q", "d"])  # rotation gauche ou droite
+    key = random.choice(["q", "d"])
     duration = random.uniform(SEARCH_MIN_DURATION, SEARCH_MAX_DURATION)
     pyautogui.keyDown(key)
     safe_sleep(duration)
     pyautogui.keyUp(key)
-
 
 # ─────────────────────────────────────────────
 # GESTION DES TOUCHES
 # ─────────────────────────────────────────────
 
 def setup_hotkeys():
-    """Configure les raccourcis clavier pause/stop."""
     global paused, running
 
     def on_pause():
         global paused
         with _pause_lock:
             paused = not paused
-        state = "PAUSE" if paused else "REPRISE"
-        print(f"\n[BOT] {state} — appuie sur [{PAUSE_KEY.upper()}] pour basculer.")
+        print(f"\n[BOT] {'PAUSE' if paused else 'REPRISE'} — [{PAUSE_KEY.upper()}] pour basculer.")
 
     def on_stop():
         global running
@@ -167,15 +144,13 @@ def setup_hotkeys():
         print("\n[BOT] Arrêt demandé.")
 
     keyboard.add_hotkey(PAUSE_KEY, on_pause, suppress=False)
-    keyboard.add_hotkey(STOP_KEY, on_stop, suppress=False)
-
+    keyboard.add_hotkey(STOP_KEY,  on_stop,  suppress=False)
 
 # ─────────────────────────────────────────────
 # BOUCLE PRINCIPALE
 # ─────────────────────────────────────────────
 
 def alert_and_pause():
-    """Signale inventaire plein et met le bot en pause."""
     global paused
     paused = True
     print("\n" + "=" * 52)
@@ -201,34 +176,27 @@ def main():
 
     cycle = 0
     while running:
-        # Attente active si en pause
         if paused:
             time.sleep(0.2)
             continue
 
         cycle += 1
-        print(f"[BOT] Cycle #{cycle} — tentative de ramassage...")
+        print(f"[BOT] Cycle #{cycle}")
 
-        # Vérifie l'inventaire avant d'agir
         if is_inventory_full():
             alert_and_pause()
             continue
 
-        # Appuie sur E pour ramasser
         pyautogui.press(PICKUP_KEY)
-
-        # Attend la fin de l'animation (interruptible)
         safe_sleep(PICKUP_DURATION)
 
         if not running:
             break
 
-        # Re-vérifie l'inventaire après ramassage
         if is_inventory_full():
             alert_and_pause()
             continue
 
-        # Micro-mouvement pour pointer vers la prochaine graine
         if not paused and running:
             micro_search()
             safe_sleep(BETWEEN_PICKUP_DELAY)

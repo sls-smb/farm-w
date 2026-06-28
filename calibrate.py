@@ -1,39 +1,47 @@
 """
-Outil de calibration — Lance AVANT le bot pour vérifier la détection OCR.
+Outil de calibration — Lance AVANT le bot.
 
-  python calibrate.py           → affiche la position de la souris (pour trouver les coordonnées)
-  python calibrate.py capture   → capture la région inventaire et tente l'OCR
-
-Si l'OCR ne détecte rien :
-  1. Ouvre calibration_capture.png pour voir ce qui est capturé
-  2. Ajuste INVENTORY_REGION dans farm_bot.py selon tes coordonnées
-  3. Re-lance "python calibrate.py capture" avec le message affiché dans GTA
+  python calibrate.py          → affiche la position de la souris
+  python calibrate.py capture  → teste la détection de la notification Unity RP
+  python calibrate.py watch    → surveille en temps réel (affiche si notif détectée)
 """
 
 import sys
 import time
-import mss
 import numpy as np
 import cv2
-import pytesseract
-from PIL import Image
+import mss
 
 # Doit correspondre à farm_bot.py
-INVENTORY_REGION = {
+NOTIF_REGION = {
     "top": 990,
     "left": 60,
     "width": 380,
     "height": 110,
 }
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+RED_MIN = np.array([0,  0,  150], dtype=np.uint8)
+RED_MAX = np.array([80, 80, 255], dtype=np.uint8)
+RED_PIXEL_THRESHOLD = 30
+
+
+def capture_region():
+    with mss.mss() as sct:
+        shot = sct.grab(NOTIF_REGION)
+        arr = np.frombuffer(shot.bgra, dtype=np.uint8).reshape(shot.height, shot.width, 4)
+        return arr[:, :, :3]
+
+
+def check_notif():
+    bgr = capture_region()
+    mask = cv2.inRange(bgr, RED_MIN, RED_MAX)
+    count = cv2.countNonZero(mask)
+    return count, count >= RED_PIXEL_THRESHOLD
 
 
 def live_mouse():
-    """Affiche la position de la souris en temps réel (Ctrl+C pour quitter)."""
     import pyautogui
     print("Position de la souris — Ctrl+C pour quitter")
-    print("Déplace la souris vers le message GTA pour trouver ses coordonnées.\n")
     try:
         while True:
             x, y = pyautogui.position()
@@ -43,53 +51,50 @@ def live_mouse():
         print("\nTerminé.")
 
 
-def capture_and_ocr():
-    """Capture la région et tente l'OCR — affiche le texte détecté."""
-    print(f"Capture de la région : {INVENTORY_REGION}")
+def single_capture():
+    bgr = capture_region()
+    count, detected = check_notif()
 
-    with mss.mss() as sct:
-        shot = sct.grab(INVENTORY_REGION)
-        img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+    # Sauvegarde l'image avec les pixels rouges surlignés
+    from PIL import Image
+    mask = cv2.inRange(bgr, RED_MIN, RED_MAX)
+    highlighted = bgr.copy()
+    highlighted[mask > 0] = [0, 255, 0]  # colorie les pixels détectés en vert
+    cv2.imwrite("calibration_capture.png", bgr)
+    cv2.imwrite("calibration_highlight.png", highlighted)
 
-    img.save("calibration_capture.png")
-    print("→ Image brute sauvegardée : calibration_capture.png")
+    print(f"\nPixels rouges détectés : {count} (seuil : {RED_PIXEL_THRESHOLD})")
+    print("→ Image brute : calibration_capture.png")
+    print("→ Pixels détectés surlignés en vert : calibration_highlight.png")
 
-    # Prétraitement : texte blanc sur fond sombre → on inverse pour obtenir noir sur blanc
-    arr = np.array(img)
-    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-    # Inversion : texte blanc devient noir, fond sombre devient blanc
-    inverted = cv2.bitwise_not(gray)
-    # Seuillage pour nettoyer le bruit
-    _, thresh = cv2.threshold(inverted, 180, 255, cv2.THRESH_BINARY)
-    h, w = thresh.shape
-    resized = cv2.resize(thresh, (w * 2, h * 2), interpolation=cv2.INTER_LINEAR)
-    thresh_img = Image.fromarray(resized)
-    thresh_img.save("calibration_thresh.png")
-    print("→ Image seuillée sauvegardée : calibration_thresh.png")
-
-    # Tente l'OCR avec plusieurs configs
-    text = ""
-    for config in ["--psm 6", "--psm 3", "--psm 11"]:
-        t = pytesseract.image_to_string(thresh_img, lang="fra", config=config)
-        if t.strip():
-            text = t
-            break
-    if not text.strip():
-        text = pytesseract.image_to_string(thresh_img, lang="fra")
-    print(f"\nTexte OCR détecté :\n---\n{text.strip()}\n---")
-
-    keyword = "n'avez"
-    if keyword.lower() in text.lower():
-        print("✓ Message 'inventaire plein' DÉTECTÉ — la calibration est correcte.")
+    if detected:
+        print("\n✓ Notification Unity RP DÉTECTÉE — calibration correcte !")
     else:
-        print("✗ Message non détecté.")
-        print("  → Lance GTA, affiche le message, puis relance cette commande.")
-        print("  → Ouvre calibration_capture.png pour vérifier la zone capturée.")
-        print("  → Ajuste INVENTORY_REGION dans farm_bot.py si la zone est décalée.")
+        print("\n✗ Non détecté.")
+        print("  → Assure-toi que le message est visible dans GTA au moment de la capture.")
+        print(f"  → Pixels trouvés : {count} (minimum requis : {RED_PIXEL_THRESHOLD})")
+        if count > 5:
+            print(f"  → Essaie de baisser RED_PIXEL_THRESHOLD à {count} dans farm_bot.py et calibrate.py")
+
+
+def watch_mode():
+    print("Mode surveillance — Ctrl+C pour quitter")
+    print("Déclenche le message dans GTA pour tester la détection en temps réel.\n")
+    try:
+        while True:
+            count, detected = check_notif()
+            status = "✓ DÉTECTÉ" if detected else "✗ absent  "
+            print(f"  {status}  (pixels rouges : {count:4d})", end="\r")
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        print("\nTerminé.")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "capture":
-        capture_and_ocr()
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "capture":
+        single_capture()
+    elif cmd == "watch":
+        watch_mode()
     else:
         live_mouse()
