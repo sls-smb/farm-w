@@ -121,9 +121,9 @@ def safe_sleep(duration: float):
 def micro_search():
     key = random.choice(["q", "d"])
     duration = random.uniform(SEARCH_MIN_DURATION, SEARCH_MAX_DURATION)
-    pyautogui.keyDown(key)
+    keyboard.press(key)
     safe_sleep(duration)
-    pyautogui.keyUp(key)
+    keyboard.release(key)
 
 # ─────────────────────────────────────────────
 # GESTION DES TOUCHES
@@ -187,7 +187,7 @@ def main():
             alert_and_pause()
             continue
 
-        pyautogui.press(PICKUP_KEY)
+        keyboard.send(PICKUP_KEY)
         safe_sleep(PICKUP_DURATION)
 
         if not running:
