@@ -1,9 +1,9 @@
 """
-Outil de calibration — Lance AVANT le bot.
+Outil de calibration.
 
-  python calibrate.py          → affiche la position de la souris
-  python calibrate.py capture  → teste la détection de la notification Unity RP
-  python calibrate.py watch    → surveille en temps réel (affiche si notif détectée)
+  python calibrate.py          → affiche position de la souris
+  python calibrate.py capture  → capture la zone texte et tente l'OCR
+  python calibrate.py watch    → surveille en temps réel
 """
 
 import sys
@@ -11,81 +11,82 @@ import time
 import numpy as np
 import cv2
 import mss
+import pytesseract
+from PIL import Image
 
-# Doit correspondre à farm_bot.py
-NOTIF_REGION = {
-    "top": 990,
-    "left": 60,
-    "width": 380,
-    "height": 110,
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+TEXT_REGION = {
+    "top":    1065,
+    "left":   65,
+    "width":  330,
+    "height": 40,
 }
 
-RED_MIN = np.array([0,  0,  150], dtype=np.uint8)
-RED_MAX = np.array([80, 80, 255], dtype=np.uint8)
-RED_PIXEL_THRESHOLD = 30
+INVENTORY_KEYWORD = "n'avez"
 
 
-def capture_region():
+def capture():
     with mss.mss() as sct:
-        shot = sct.grab(NOTIF_REGION)
+        shot = sct.grab(TEXT_REGION)
         arr = np.frombuffer(shot.bgra, dtype=np.uint8).reshape(shot.height, shot.width, 4)
         return arr[:, :, :3]
 
 
-def check_notif():
-    bgr = capture_region()
-    mask = cv2.inRange(bgr, RED_MIN, RED_MAX)
-    count = cv2.countNonZero(mask)
-    return count, count >= RED_PIXEL_THRESHOLD
+def preprocess(bgr):
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    inv  = cv2.bitwise_not(gray)
+    _, thresh = cv2.threshold(inv, 160, 255, cv2.THRESH_BINARY)
+    h, w = thresh.shape
+    big  = cv2.resize(thresh, (w * 3, h * 3), interpolation=cv2.INTER_CUBIC)
+    return Image.fromarray(big)
 
 
-def live_mouse():
-    import pyautogui
-    print("Position de la souris — Ctrl+C pour quitter")
-    try:
-        while True:
-            x, y = pyautogui.position()
-            print(f"  x={x:4d}  y={y:4d}", end="\r")
-            time.sleep(0.05)
-    except KeyboardInterrupt:
-        print("\nTerminé.")
+def ocr(img):
+    return pytesseract.image_to_string(img, lang="fra", config="--psm 7").strip()
 
 
 def single_capture():
-    bgr = capture_region()
-    count, detected = check_notif()
-
-    # Sauvegarde l'image avec les pixels rouges surlignés
-    from PIL import Image
-    mask = cv2.inRange(bgr, RED_MIN, RED_MAX)
-    highlighted = bgr.copy()
-    highlighted[mask > 0] = [0, 255, 0]  # colorie les pixels détectés en vert
+    bgr = capture()
+    img = preprocess(bgr)
     cv2.imwrite("calibration_capture.png", bgr)
-    cv2.imwrite("calibration_highlight.png", highlighted)
-
-    print(f"\nPixels rouges détectés : {count} (seuil : {RED_PIXEL_THRESHOLD})")
-    print("→ Image brute : calibration_capture.png")
-    print("→ Pixels détectés surlignés en vert : calibration_highlight.png")
-
-    if detected:
-        print("\n✓ Notification Unity RP DÉTECTÉE — calibration correcte !")
+    img.save("calibration_thresh.png")
+    text = ocr(img)
+    print(f"\nTexte OCR : '{text}'")
+    if INVENTORY_KEYWORD in text.lower():
+        print("✓ DÉTECTÉ — calibration correcte !")
     else:
-        print("\n✗ Non détecté.")
+        print("✗ Non détecté.")
         print("  → Assure-toi que le message est visible dans GTA au moment de la capture.")
-        print(f"  → Pixels trouvés : {count} (minimum requis : {RED_PIXEL_THRESHOLD})")
-        if count > 5:
-            print(f"  → Essaie de baisser RED_PIXEL_THRESHOLD à {count} dans farm_bot.py et calibrate.py")
+        print("  → Ouvre calibration_capture.png pour voir la zone capturée.")
 
 
 def watch_mode():
     print("Mode surveillance — Ctrl+C pour quitter")
-    print("Déclenche le message dans GTA pour tester la détection en temps réel.\n")
     try:
         while True:
-            count, detected = check_notif()
+            bgr = capture()
+            img = preprocess(bgr)
+            text = ocr(img)
+            detected = INVENTORY_KEYWORD in text.lower()
             status = "✓ DÉTECTÉ" if detected else "✗ absent  "
-            print(f"  {status}  (pixels rouges : {count:4d})", end="\r")
-            time.sleep(0.2)
+            display = text[:40].replace("\n", " ")
+            print(f"  {status}  |  '{display}'", end="\r" + " "*80 + "\r")
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        print("\nTerminé.")
+
+
+def live_mouse():
+    try:
+        import pyautogui
+        print("Position de la souris — Ctrl+C pour quitter")
+        while True:
+            x, y = pyautogui.position()
+            print(f"  x={x:4d}  y={y:4d}", end="\r")
+            time.sleep(0.05)
+    except ImportError:
+        print("pyautogui non installé. Installe-le avec: pip install pyautogui")
     except KeyboardInterrupt:
         print("\nTerminé.")
 

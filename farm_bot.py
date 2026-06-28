@@ -6,9 +6,10 @@ Touche ramassage : E
 Clavier : AZERTY (ZQSD)
 OS : Windows
 
-Détecte la notification Unity RP par couleur (rapide, sans OCR).
+Détecte le texte "Vous n'avez pas assez de place" par OCR sur la ligne exacte.
 
 Dépendances : pip install -r requirements.txt
+Tesseract requis : https://github.com/UB-Mannheim/tesseract/wiki (avec pack French)
 """
 
 import sys
@@ -22,13 +23,18 @@ import keyboard
 import mss
 import numpy as np
 import cv2
+import pytesseract
 from PIL import Image
 
-# Envoi de touches par scan code (indépendant du layout AZERTY/QWERTY)
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+# ─────────────────────────────────────────────
+# ENVOI DE TOUCHES (scan codes, indépendant du layout AZERTY/QWERTY)
+# ─────────────────────────────────────────────
+
 KEYEVENTF_SCANCODE = 0x0008
 KEYEVENTF_KEYUP    = 0x0002
 
-# Scan codes des touches physiques (identiques sur tous les claviers)
 SCAN_CODES = {
     "e": 0x12,
     "z": 0x11,
@@ -56,40 +62,28 @@ def tap_scan(key: str):
 # CONFIGURATION
 # ─────────────────────────────────────────────
 
-# Touche de ramassage
 PICKUP_KEY = "e"
-
-# Durée de l'animation de ramassage (secondes)
 PICKUP_DURATION = 5.5
-
-# Délai entre la fin de l'animation et le prochain ramassage
 BETWEEN_PICKUP_DELAY = 0.3
 
-# Zone contenant la notification Unity RP (bas-gauche, 2560x1440)
-NOTIF_REGION = {
-    "top": 990,
-    "left": 60,
-    "width": 380,
-    "height": 110,
+# Zone ciblant UNIQUEMENT la ligne de texte "Vous n'avez pas assez de place"
+# Calculée depuis screenshot 2560x1440
+TEXT_REGION = {
+    "top":    1065,
+    "left":   65,
+    "width":  330,
+    "height": 40,
 }
 
-# Couleur rouge du logo Unity RP (BGR) — plage de détection
-# Rouge vif : R>150, G<80, B<80
-RED_MIN = np.array([0,   0,   150], dtype=np.uint8)   # BGR min
-RED_MAX = np.array([80,  80,  255], dtype=np.uint8)   # BGR max
+# Mot-clé à détecter (distinctif à ce message)
+INVENTORY_KEYWORD = "n'avez"
 
-# Nombre minimum de pixels rouges pour valider la détection
-RED_PIXEL_THRESHOLD = 30
-
-# Micro-mouvement entre graines
 SEARCH_MIN_DURATION = 0.2
 SEARCH_MAX_DURATION = 0.6
 
-# Touches
 PAUSE_KEY = "p"
 STOP_KEY  = "end"
 
-# Alerte sonore
 ALERT_BEEPS = [
     (1200, 300),
     (900,  300),
@@ -101,12 +95,12 @@ ALERT_BEEPS = [
 # ÉTAT GLOBAL
 # ─────────────────────────────────────────────
 
-paused = False
+paused  = False
 running = True
 _pause_lock = threading.Lock()
 
 # ─────────────────────────────────────────────
-# UTILITAIRES
+# DÉTECTION
 # ─────────────────────────────────────────────
 
 def play_alert():
@@ -116,25 +110,37 @@ def play_alert():
 
 
 def capture_region(region: dict) -> np.ndarray:
-    """Capture une région et retourne un tableau BGR (format OpenCV)."""
     with mss.mss() as sct:
         shot = sct.grab(region)
         arr = np.frombuffer(shot.bgra, dtype=np.uint8).reshape(shot.height, shot.width, 4)
-        return arr[:, :, :3]  # drop alpha → BGR
+        return arr[:, :, :3]  # BGR
+
+
+def preprocess(bgr: np.ndarray) -> Image.Image:
+    """
+    Texte blanc sur fond sombre :
+    1. Niveaux de gris
+    2. Inversion (texte blanc → noir)
+    3. Seuillage pour nettoyer le bruit
+    4. Agrandissement x3 pour améliorer l'OCR sur petite police
+    """
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    inv  = cv2.bitwise_not(gray)
+    _, thresh = cv2.threshold(inv, 160, 255, cv2.THRESH_BINARY)
+    h, w = thresh.shape
+    big  = cv2.resize(thresh, (w * 3, h * 3), interpolation=cv2.INTER_CUBIC)
+    return Image.fromarray(big)
 
 
 def is_inventory_full() -> bool:
-    """
-    Détecte la notification Unity RP en cherchant les pixels rouges du logo.
-    Rapide (~5ms), sans OCR.
-    """
     try:
-        bgr = capture_region(NOTIF_REGION)
-        mask = cv2.inRange(bgr, RED_MIN, RED_MAX)
-        red_pixels = cv2.countNonZero(mask)
-        return red_pixels >= RED_PIXEL_THRESHOLD
+        bgr = capture_region(TEXT_REGION)
+        img = preprocess(bgr)
+        # psm 7 = ligne de texte unique, idéal pour notre zone étroite
+        text = pytesseract.image_to_string(img, lang="fra", config="--psm 7").lower()
+        return INVENTORY_KEYWORD in text
     except Exception as e:
-        print(f"[WARN] Erreur détection : {e}")
+        print(f"[WARN] OCR : {e}")
         return False
 
 
@@ -154,7 +160,7 @@ def micro_search():
     release_scan(key)
 
 # ─────────────────────────────────────────────
-# GESTION DES TOUCHES
+# HOTKEYS
 # ─────────────────────────────────────────────
 
 def setup_hotkeys():
@@ -197,7 +203,7 @@ def main():
     print(f"  Ramassage : [{PICKUP_KEY.upper()}]   Pause : [{PAUSE_KEY.upper()}]   Stop : [END]")
     print("=" * 52)
     print("\nPositionne-toi dans la zone de farm.")
-    print("Lancement dans 5 secondes...\n")
+    print("Lancement dans 5 secondes — clique sur GTA !\n")
     time.sleep(5)
 
     setup_hotkeys()
