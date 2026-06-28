@@ -91,7 +91,7 @@ DEFAULT_CONFIG = {
     "cancel_key": "x",
     "pause_key": "p",
     "stop_key": "end",
-    "cancel_delay": 5.5,
+    "cancel_delay": 6.0,
     "pickup_duration": 6.5,
     "between_delay": 0.3,
     "search_enabled": False,
