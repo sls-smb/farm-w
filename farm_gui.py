@@ -16,6 +16,35 @@ import time
 import threading
 import random
 import ctypes
+import subprocess
+
+# ─────────────────────────────────────────────
+# CORRECTIF PyInstaller --windowed
+# ─────────────────────────────────────────────
+# En mode compilé sans console, les appels subprocess (utilisés par
+# pytesseract pour lancer Tesseract) héritent de handles std invalides
+# et échouent silencieusement → l'OCR ne détecte plus rien.
+# On patche Popen pour fournir des handles valides et masquer la console.
+if sys.platform == "win32":
+    _CREATE_NO_WINDOW = 0x08000000
+    _orig_popen = subprocess.Popen
+
+    class _PatchedPopen(_orig_popen):
+        def __init__(self, *args, **kwargs):
+            si = kwargs.get("startupinfo")
+            if si is None:
+                si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            kwargs["startupinfo"] = si
+            kwargs.setdefault("creationflags", _CREATE_NO_WINDOW)
+            # Fournit des handles valides quand ils manquent (mode --windowed)
+            for handle in ("stdin", "stdout", "stderr"):
+                if kwargs.get(handle) is None:
+                    kwargs[handle] = subprocess.PIPE
+            super().__init__(*args, **kwargs)
+
+    subprocess.Popen = _PatchedPopen
 
 import tkinter as tk
 from tkinter import ttk, messagebox
