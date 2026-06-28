@@ -52,7 +52,7 @@ INVENTORY_REGION = {
 }
 
 # Texte à détecter (insensible à la casse, correspondance partielle)
-INVENTORY_FULL_TEXT = "assez de place"
+INVENTORY_FULL_TEXT = "n'avez"
 
 # Micro-mouvement aléatoire entre chaque graine (zone petite)
 # Le personnage pivote légèrement sur lui-même pour couvrir la zone

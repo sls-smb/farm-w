@@ -78,7 +78,7 @@ def capture_and_ocr():
         text = pytesseract.image_to_string(thresh_img, lang="fra")
     print(f"\nTexte OCR détecté :\n---\n{text.strip()}\n---")
 
-    keyword = "assez de place"
+    keyword = "n'avez"
     if keyword.lower() in text.lower():
         print("✓ Message 'inventaire plein' DÉTECTÉ — la calibration est correcte.")
     else:
