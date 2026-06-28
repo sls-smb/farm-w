@@ -88,8 +88,10 @@ CONFIG_FILE = os.path.join(app_dir(), "config.json")
 DEFAULT_CONFIG = {
     "tesseract_path": resolve_tesseract(),
     "pickup_key": "e",
+    "cancel_key": "x",
     "pause_key": "p",
     "stop_key": "end",
+    "cancel_delay": 4.5,
     "pickup_duration": 5.5,
     "between_delay": 0.3,
     "search_enabled": False,
@@ -294,7 +296,20 @@ class FarmBot:
                 continue
 
             tap_scan(self.cfg["pickup_key"])
-            self._safe_sleep(self.cfg["pickup_duration"])
+
+            # Annulation d'animation : appuie sur cancel_key après cancel_delay s
+            cancel_delay = self.cfg["cancel_delay"]
+            self._safe_sleep(cancel_delay)
+            if not self.running:
+                break
+            if not self.paused:
+                tap_scan(self.cfg["cancel_key"])
+                self.log(f"[BOT] Cancel animation ({self.cfg['cancel_key'].upper()})")
+
+            # Attend le reste de la durée de ramassage
+            remaining = self.cfg["pickup_duration"] - cancel_delay
+            if remaining > 0:
+                self._safe_sleep(remaining)
 
             if not self.running:
                 break
@@ -427,8 +442,9 @@ class FarmGUI:
         grid.pack()
 
         self._add_key_row(grid, 0, "Touche Utiliser (ramasser)", "pickup_key")
-        self._add_key_row(grid, 1, "Touche Pause / Reprendre", "pause_key")
-        self._add_key_row(grid, 2, "Touche Stop (arrêt)", "stop_key")
+        self._add_key_row(grid, 1, "Touche Cancel Animation", "cancel_key")
+        self._add_key_row(grid, 2, "Touche Pause / Reprendre", "pause_key")
+        self._add_key_row(grid, 3, "Touche Stop (arrêt)", "stop_key")
 
         ttk.Label(f, text="Note : Pause et Stop fonctionnent même quand GTA a le focus.",
                   font=("Segoe UI", 8), foreground="#888").pack(pady=20)
