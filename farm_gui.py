@@ -95,45 +95,74 @@ def save_config(cfg):
 
 
 # ─────────────────────────────────────────────
-# ENVOI DE TOUCHES (scan codes, indépendant AZERTY/QWERTY)
+# ENVOI DE TOUCHES
 # ─────────────────────────────────────────────
+#
+# On envoie des SCAN CODES physiques (les jeux comme GTA/FiveM lisent le
+# scan code, pas le caractère). Mais le scan code correct dépend du layout
+# clavier de l'utilisateur (AZERTY, QWERTY, QWERTZ...). On le calcule donc
+# DYNAMIQUEMENT via Windows pour chaque caractère, au lieu d'une table figée.
 
-KEYEVENTF_SCANCODE = 0x0008
-KEYEVENTF_KEYUP    = 0x0002
+KEYEVENTF_EXTENDEDKEY = 0x0001
+KEYEVENTF_KEYUP       = 0x0002
+KEYEVENTF_SCANCODE    = 0x0008
+MAPVK_VK_TO_VSC       = 0x00
 
-# Table nom de touche → scan code physique
-SCAN_CODES = {
-    "a": 0x1E, "b": 0x30, "c": 0x2E, "d": 0x20, "e": 0x12, "f": 0x21,
-    "g": 0x22, "h": 0x23, "i": 0x17, "j": 0x24, "k": 0x25, "l": 0x26,
-    "m": 0x32, "n": 0x31, "o": 0x18, "p": 0x19, "q": 0x10, "r": 0x13,
-    "s": 0x1F, "t": 0x14, "u": 0x16, "v": 0x2F, "w": 0x11, "x": 0x2D,
-    "y": 0x15, "z": 0x2C,
-    "0": 0x0B, "1": 0x02, "2": 0x03, "3": 0x04, "4": 0x05,
-    "5": 0x06, "6": 0x07, "7": 0x08, "8": 0x09, "9": 0x0A,
-    "space": 0x39, "enter": 0x1C, "tab": 0x0F, "shift": 0x2A,
-    "ctrl": 0x1D, "alt": 0x38, "esc": 0x01,
-    "f1": 0x3B, "f2": 0x3C, "f3": 0x3D, "f4": 0x3E, "f5": 0x3F,
-    "f6": 0x40, "f7": 0x41, "f8": 0x42, "f9": 0x43, "f10": 0x44,
-    "f11": 0x57, "f12": 0x58,
-    "up": 0x48, "down": 0x50, "left": 0x4B, "right": 0x4D,
+_user32 = ctypes.windll.user32
+
+# Touches sans caractère imprimable → code de touche virtuelle (VK) fixe
+VK_SPECIAL = {
+    "space": 0x20, "enter": 0x0D, "tab": 0x09, "shift": 0x10,
+    "ctrl": 0x11, "alt": 0x12, "esc": 0x1B,
+    "end": 0x23, "home": 0x24, "delete": 0x2E,
+    "pageup": 0x21, "pagedown": 0x22, "insert": 0x2D,
+    "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
+    "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73, "f5": 0x74,
+    "f6": 0x75, "f7": 0x76, "f8": 0x77, "f9": 0x78, "f10": 0x79,
+    "f11": 0x7A, "f12": 0x7B,
 }
 
+# Touches "étendues" qui nécessitent le flag EXTENDEDKEY
+_EXTENDED = {"up", "down", "left", "right", "end", "home",
+            "delete", "pageup", "pagedown", "insert"}
 
-def _send_scan(scan_code: int, up: bool = False):
-    flags = KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if up else 0)
-    ctypes.windll.user32.keybd_event(0, scan_code, flags, 0)
+
+def key_to_scancode(key: str):
+    """Retourne le scan code physique correct pour le layout clavier actuel."""
+    key = key.lower()
+    if key in VK_SPECIAL:
+        vk = VK_SPECIAL[key]
+    elif len(key) == 1:
+        # VkKeyScanW : caractère → touche virtuelle selon le layout actif
+        res = _user32.VkKeyScanW(ord(key))
+        if res == -1:
+            return None
+        vk = res & 0xFF
+    else:
+        return None
+    # MapVirtualKey : touche virtuelle → scan code physique
+    return _user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
+
+
+def _send_scan(scan_code: int, key: str, up: bool = False):
+    flags = KEYEVENTF_SCANCODE
+    if key.lower() in _EXTENDED:
+        flags |= KEYEVENTF_EXTENDEDKEY
+    if up:
+        flags |= KEYEVENTF_KEYUP
+    _user32.keybd_event(0, scan_code, flags, 0)
 
 
 def press_scan(key: str):
-    code = SCAN_CODES.get(key.lower())
+    code = key_to_scancode(key)
     if code:
-        _send_scan(code)
+        _send_scan(code, key)
 
 
 def release_scan(key: str):
-    code = SCAN_CODES.get(key.lower())
+    code = key_to_scancode(key)
     if code:
-        _send_scan(code, up=True)
+        _send_scan(code, key, up=True)
 
 
 def tap_scan(key: str):
@@ -300,8 +329,9 @@ class KeyCaptureButton(ttk.Button):
             "alt_l": "alt", "alt_r": "alt", "prior": "pageup", "next": "pagedown",
         }
         key = mapping.get(key, key)
-        if key not in SCAN_CODES and key not in ("end", "home", "delete", "pageup", "pagedown"):
-            # touche non supportée → ignore
+        # Supportée si c'est un caractère unique ou une touche spéciale connue
+        supported = (len(key) == 1) or (key in VK_SPECIAL)
+        if not supported or key_to_scancode(key) is None:
             self.config(text=self.key.upper())
             self._capturing = False
             self.unbind_all("<Key>")
