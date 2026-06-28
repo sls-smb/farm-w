@@ -28,13 +28,36 @@ import pytesseract
 from PIL import Image
 
 # ─────────────────────────────────────────────
+# CHEMINS (gère le mode .exe PyInstaller)
+# ─────────────────────────────────────────────
+
+def app_dir():
+    """Dossier de l'application (à côté de l'exe en mode compilé, sinon dossier du script)."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def resolve_tesseract():
+    """
+    Cherche Tesseract dans cet ordre :
+    1. Dossier 'Tesseract-OCR' embarqué à côté de l'exe (build autonome)
+    2. Installation standard Windows
+    """
+    bundled = os.path.join(app_dir(), "Tesseract-OCR", "tesseract.exe")
+    if os.path.exists(bundled):
+        return bundled
+    return r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+
+# ─────────────────────────────────────────────
 # CONFIG PERSISTANTE
 # ─────────────────────────────────────────────
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+CONFIG_FILE = os.path.join(app_dir(), "config.json")
 
 DEFAULT_CONFIG = {
-    "tesseract_path": r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    "tesseract_path": resolve_tesseract(),
     "pickup_key": "e",
     "pause_key": "p",
     "stop_key": "end",
@@ -60,6 +83,9 @@ def load_config():
                 cfg.update(json.load(f))
         except Exception:
             pass
+    # Si le chemin Tesseract enregistré n'existe plus, on le re-résout
+    if not os.path.exists(cfg.get("tesseract_path", "")):
+        cfg["tesseract_path"] = resolve_tesseract()
     return cfg
 
 
@@ -309,14 +335,11 @@ class FarmGUI:
 
         self.tab_main = ttk.Frame(nb)
         self.tab_keys = ttk.Frame(nb)
-        self.tab_adv = ttk.Frame(nb)
         nb.add(self.tab_main, text="  Contrôle  ")
         nb.add(self.tab_keys, text="  Touches  ")
-        nb.add(self.tab_adv, text="  Avancé  ")
 
         self._build_main_tab()
         self._build_keys_tab()
-        self._build_adv_tab()
 
     def _build_main_tab(self):
         f = self.tab_main
@@ -373,63 +396,6 @@ class FarmGUI:
         save_config(self.cfg)
         self._setup_global_hotkeys()
         self.log(f"[CONFIG] {cfg_key} = {new_key.upper()}")
-
-    def _build_adv_tab(self):
-        f = self.tab_adv
-        grid = ttk.Frame(f)
-        grid.pack(pady=12, padx=12, fill="x")
-
-        self.adv_vars = {}
-
-        def add_field(row, label, key, width=10):
-            ttk.Label(grid, text=label, anchor="w").grid(row=row, column=0, sticky="w", pady=4)
-            var = tk.StringVar(value=str(self.cfg[key]))
-            ent = ttk.Entry(grid, textvariable=var, width=width)
-            ent.grid(row=row, column=1, sticky="w", padx=8, pady=4)
-            self.adv_vars[key] = var
-
-        add_field(0, "Durée animation ramassage (s)", "pickup_duration")
-        add_field(1, "Délai entre ramassages (s)", "between_delay")
-        add_field(2, "Délai avant démarrage (s)", "start_delay")
-        add_field(3, "Mot-clé détection", "keyword", width=20)
-
-        ttk.Separator(grid, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=10)
-        ttk.Label(grid, text="Zone de détection du texte (pixels)",
-                  font=("Segoe UI", 9, "bold")).grid(row=5, column=0, columnspan=2, sticky="w")
-
-        add_field(6, "Position X (left)", "region_left")
-        add_field(7, "Position Y (top)", "region_top")
-        add_field(8, "Largeur (width)", "region_width")
-        add_field(9, "Hauteur (height)", "region_height")
-
-        ttk.Separator(grid, orient="horizontal").grid(row=10, column=0, columnspan=2, sticky="ew", pady=10)
-        ttk.Label(grid, text="Chemin Tesseract", anchor="w").grid(row=11, column=0, sticky="w", pady=4)
-        self.tess_var = tk.StringVar(value=self.cfg["tesseract_path"])
-        ttk.Entry(grid, textvariable=self.tess_var, width=40).grid(row=12, column=0, columnspan=2, sticky="w", pady=4)
-
-        self.search_var = tk.BooleanVar(value=self.cfg["search_enabled"])
-        ttk.Checkbutton(grid, text="Activer le micro-déplacement entre graines",
-                        variable=self.search_var).grid(row=13, column=0, columnspan=2, sticky="w", pady=8)
-
-        ttk.Button(f, text="💾 Enregistrer les réglages", command=self.save_advanced).pack(pady=8)
-
-    def save_advanced(self):
-        try:
-            self.cfg["pickup_duration"] = float(self.adv_vars["pickup_duration"].get())
-            self.cfg["between_delay"]   = float(self.adv_vars["between_delay"].get())
-            self.cfg["start_delay"]     = int(float(self.adv_vars["start_delay"].get()))
-            self.cfg["keyword"]         = self.adv_vars["keyword"].get()
-            self.cfg["region_left"]     = int(self.adv_vars["region_left"].get())
-            self.cfg["region_top"]      = int(self.adv_vars["region_top"].get())
-            self.cfg["region_width"]    = int(self.adv_vars["region_width"].get())
-            self.cfg["region_height"]   = int(self.adv_vars["region_height"].get())
-            self.cfg["tesseract_path"]  = self.tess_var.get()
-            self.cfg["search_enabled"]  = self.search_var.get()
-            save_config(self.cfg)
-            self.log("[CONFIG] Réglages enregistrés.")
-            messagebox.showinfo("OK", "Réglages enregistrés.")
-        except ValueError as e:
-            messagebox.showerror("Erreur", f"Valeur invalide : {e}")
 
     # ---------- hotkeys globaux ----------
     def _setup_global_hotkeys(self):
