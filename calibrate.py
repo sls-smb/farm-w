@@ -62,17 +62,17 @@ def single_capture():
 
 
 def watch_mode():
-    print("Mode surveillance — Ctrl+C pour quitter")
+    print("Mode surveillance — Ctrl+C pour quitter\n")
     try:
         while True:
             bgr = capture()
             img = preprocess(bgr)
             text = ocr(img)
             detected = INVENTORY_KEYWORD in text.lower()
-            status = "✓ DÉTECTÉ" if detected else "✗ absent  "
-            display = text[:40].replace("\n", " ")
-            print(f"  {status}  |  '{display}'", end="\r" + " "*80 + "\r")
-            time.sleep(0.3)
+            status = "DETECTE !" if detected else "absent"
+            display = text.replace("\n", " ").strip()[:50]
+            print(f"[{status}] OCR: '{display}'")
+            time.sleep(0.5)
     except KeyboardInterrupt:
         print("\nTerminé.")
 
